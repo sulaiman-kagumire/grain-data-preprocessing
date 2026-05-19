@@ -6,7 +6,7 @@ Preprocessing, training, and evaluation scripts for:
 > Peter Nabende, Sulaiman Kagumire, Carol Kantono, Joyce Nakatumba-Nabende  
 > *Data in Brief*, 2026
 
-Dataset on Mendeley Data: **DOI [10.17632/gnsnrggr6m.2](https://data.mendeley.com/datasets/gnsnrggr6m/2)**
+Dataset: **[10.17632/gnsnrggr6m.2](https://data.mendeley.com/datasets/gnsnrggr6m/2)**
 
 ---
 
@@ -15,8 +15,8 @@ Dataset on Mendeley Data: **DOI [10.17632/gnsnrggr6m.2](https://data.mendeley.co
 | Script | Manuscript section | What it does |
 |---|---|---|
 | `preprocess.py` | Section 4.4, 5.1 | Format conversion, VAD trimming, metadata alignment |
-| `train.py` | Section 5.2 | Fine-tune XLS-R, Wav2vec2-BERT, Parakeet CTC |
-| `evaluate.py` | Section 5.3, 5.4 | Generate Tables 6–10 (WER + bias assessment) |
+| `train.py` | Section 5.2 | Fine-tune XLS-R, Wav2vec2-BERT, and Whisper-small |
+| `evaluate.py` | Section 5.3, 5.4 | Generate Tables 6–10 (WER and bias assessment) |
 
 ---
 
@@ -34,21 +34,25 @@ sudo apt install ffmpeg      # Ubuntu/Debian
 brew install ffmpeg          # macOS
 ```
 
-For Parakeet CTC only:
+---
 
-```bash
-pip install nemo_toolkit['asr'] pytorch-lightning soundfile
-```
+## Fine-tuned models
+
+| Model | HuggingFace |
+|---|---|
+| XLS-R wav2vec2-300M | https://huggingface.co/sulaimank/wav2vec-xlsr-cv-grain-lg_both |
+| Wav2vec2-BERT-2.0 | https://huggingface.co/sulaimank/w2v-bert-grain-lg_GRAIN |
+| Whisper-small | https://huggingface.co/sulaimank/whisper-small-lug-grain |
 
 ---
 
 ## Dataset structure
 
-Download from Mendeley Data. You will get:
+Download from Mendeley Data:
 
 ```
-audios.zip          — 21,858 WAV files (16 kHz mono 16-bit)
-metadata.csv        — one row per recording
+audios.zip      — 21,858 WAV files (16 kHz mono 16-bit)
+metadata.csv    — one row per recording
 ```
 
 **metadata.csv columns:**
@@ -61,11 +65,10 @@ metadata.csv        — one row per recording
 | `gender` | string | "Female" or "Male" |
 | `age_group` | string | "18-29", "30-39", "40-49", "50-59", "60-69", "70-79" |
 | `voice_clip` | string | WAV filename, e.g. `yogera_text_audio_20240425_113518.961214_2374.wav` |
-| `duration` | float | Duration in **hours** (e.g. 0.001667 ≈ 6 s) |
-| `Region` | string | "Central", "Eastern", "Northern", "Western" |
+| `duration` | float | Duration in **hours**, rounded to nearest second (e.g. 0.001667 ≈ 6 s) |
+| `Region` | string | "Central", "Eastern", "Northern", or "Western" |
 
 **Sample row:**
-
 ```
 sentence       : Mu buganda abakazi batono abakama ente.
 language       : Luganda
@@ -81,9 +84,6 @@ Region         : Central
 
 ## Step 1 — Preprocess
 
-Converts all audio to 16 kHz mono 16-bit WAV, trims silence using
-pywebrtcvad, validates duration (1–20 s), and aligns metadata.
-
 ```bash
 python preprocess.py \
     --audio_dir   /path/to/extracted/audios \
@@ -92,19 +92,12 @@ python preprocess.py \
     --output_meta /path/to/cleaned_audio/metadata.csv
 ```
 
-Output:
-- Cleaned WAV files (original filenames preserved)
-- Updated `metadata.csv` with recomputed durations
-
 ---
 
 ## Step 2 — Train
 
-Assigns train / validation / test splits (10,240 / 2,560 / 6,400)
-and fine-tunes the selected model.
-
 ```bash
-# Best-performing model only (recommended)
+# Best-performing model only
 python train.py \
     --audio_dir  /path/to/cleaned_audio \
     --metadata   /path/to/cleaned_audio/metadata.csv \
@@ -117,11 +110,11 @@ python train.py ... --model all
 
 **Model options:**
 
-| `--model` | Model | HuggingFace / NeMo ID |
+| `--model` | Model | Base model |
 |---|---|---|
 | `xlsr` | XLS-R wav2vec2-300M | `facebook/wav2vec2-xls-r-300m` |
 | `wav2vec2bert` | Wav2vec2-BERT-2.0 | `facebook/w2v-bert-2.0` |
-| `parakeet` | Parakeet-CTC-0.6B | `nvidia/parakeet-ctc-0.6b` |
+| `whisper` | Whisper-small | `openai/whisper-small` |
 
 **Training hyperparameters (manuscript Section 5.2):**
 
@@ -131,15 +124,13 @@ python train.py ... --model all
 | Epochs | 100 |
 | Learning rate | 0.0003 |
 | Batch size | 32 |
-| Random seed | 42 |
+| Seed | 42 |
 
 Output includes `metadata_with_splits.csv` needed by `evaluate.py`.
 
 ---
 
 ## Step 3 — Evaluate
-
-Runs inference on the test split and saves all bias assessment tables.
 
 ```bash
 python evaluate.py \
@@ -151,9 +142,9 @@ python evaluate.py \
     --cv_metadata  /path/to/cv_metadata.csv          # optional
 ```
 
-**Output CSV files:**
+**Output files:**
 
-| File | Manuscript table |
+| File | Table |
 |---|---|
 | `table6_model_wer.csv` | Table 6 — WER for three models |
 | `table7_cross_dataset_wer.csv` | Table 7 — Cross-dataset WER |
@@ -161,17 +152,16 @@ python evaluate.py \
 | `table9_age_gender_wer.csv` | Table 9 — WER by age group and gender |
 | `table10_regional_wer.csv` | Table 10 — WER by regional accent |
 
-Tables 7 and 8 require Common Voice Luganda. Download from:
+Tables 7 and 8 require Common Voice Luganda:
 https://commonvoice.mozilla.org/en/datasets
 
 ---
 
-## Notes on age groups
+## Age group note
 
-The metadata uses six age groups: 18-29, 30-39, 40-49, 50-59, 60-69, 70-79.
-For evaluation (Table 9), the three oldest groups are merged into `>=50`
-because their individual sample sizes are small (manuscript Section 5.1).
-This merging is done automatically in `evaluate.py`.
+For evaluation (Table 9), age groups 50-59, 60-69, and 70-79 are merged
+into `>=50` because their individual sample sizes are small. This is done
+automatically in `evaluate.py`.
 
 ---
 
@@ -192,5 +182,4 @@ This merging is done automatically in `evaluate.py`.
 
 ## Licence
 
-Scripts: MIT  
-Dataset: CC BY 4.0
+Scripts: MIT | Dataset: CC BY 4.0
