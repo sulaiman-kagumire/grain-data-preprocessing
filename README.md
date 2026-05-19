@@ -1,4 +1,4 @@
-# Yogera Luganda ASR — Reproducibility Scripts
+# GRAIN Luganda Data
 
 Preprocessing, training, and evaluation scripts for:
 
